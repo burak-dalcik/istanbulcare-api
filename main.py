@@ -1,13 +1,10 @@
-#!/usr/bin/env python3
-"""
-Entry point for Render deployment
-"""
+# This file serves as a simple entry point for deployment platforms like Render.
+# It imports the actual FastAPI application from app.main.
+
+import sys
+import os
+
+# Add current directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from app.main import app
-
-if __name__ == "__main__":
-    import uvicorn
-    import os
-    
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
