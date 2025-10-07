@@ -15,18 +15,26 @@ def setup_database():
     try:
         # Import after path setup
         from app.db.session import Base, engine
-        from create_sample_data import create_sample_data
         
         # Create all tables
         Base.metadata.create_all(bind=engine)
         print("Database tables created successfully!")
         
-        # Create sample data
-        create_sample_data()
-        print("Sample data created successfully!")
+        # Run create_sample_data.py directly
+        import subprocess
+        result = subprocess.run([sys.executable, "create_sample_data.py"], 
+                              capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            print("Sample data created successfully!")
+            print(result.stdout)
+        else:
+            print(f"Sample data creation failed: {result.stderr}")
         
     except Exception as e:
         print(f"Setup error: {e}")
+        import traceback
+        traceback.print_exc()
         # Don't fail deployment if sample data creation fails
         pass
 
