@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status, Request, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -13,7 +13,7 @@ from app.models.user import User
 
 # Use pbkdf2_sha256 to avoid platform-specific bcrypt issues
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-oauth2_scheme = HTTPBearer(auto_error=False)
+oauth2_scheme = HTTPBearer(auto_error=True)
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -32,8 +32,7 @@ def create_access_token(subject: str, is_admin: bool, expires_minutes: Optional[
 
 
 async def get_current_user(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials = Depends(oauth2_scheme),
+    credentials: HTTPAuthorizationCredentials = Security(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
     credentials_exception = HTTPException(
@@ -41,33 +40,7 @@ async def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    # Accept token from multiple places:
-    # 1) Authorization: Bearer <token> (preferred)
-    # 2) Authorization: <token> (raw token)
-    # 3) X-Token: <token>
-    # 4) token query parameter
-    raw_auth_header = request.headers.get("Authorization")
-    x_token = request.headers.get("X-Token")
-    query_token = request.query_params.get("token")
-
-    token_value: Optional[str] = None
-
-    if credentials and credentials.credentials:
-        token_value = credentials.credentials
-    elif raw_auth_header:
-        parts = raw_auth_header.split()
-        if len(parts) == 1:
-            # Authorization: <token>
-            token_value = parts[0]
-        elif len(parts) == 2 and parts[0].lower() == "bearer":
-            token_value = parts[1]
-    elif x_token:
-        token_value = x_token
-    elif query_token:
-        token_value = query_token
-
-    if not token_value:
-        raise credentials_exception
+    token_value = credentials.credentials
 
     try:
         payload = jwt.decode(token_value, settings.secret_key, algorithms=["HS256"]) 
@@ -85,7 +58,7 @@ async def get_current_user(
     return user
 
 
-def require_admin(user: User = Depends(get_current_user)) -> User:
+def require_admin(user: User = Security(get_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return user

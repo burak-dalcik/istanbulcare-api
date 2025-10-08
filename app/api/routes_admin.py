@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-# Authentication disabled for React development
-# from app.core.security import get_current_user, require_admin
+from app.core.security import require_admin
+from fastapi import Security
 from app.db.session import get_db
 from app.models.user import User
 from app.models.service import Service
@@ -17,11 +17,25 @@ from app.schemas.header import HeaderColumnCreate, HeaderColumnUpdate, HeaderCol
 router = APIRouter(
     prefix="/admin", 
     tags=["admin"],
-    responses={401: {"description": "Unauthorized"}}
+    responses={401: {"description": "Unauthorized"}},
+    dependencies=[Security(require_admin)]
 )
 
 
 # Services
+@router.get("/services", response_model=list[ServiceRead])
+def list_services(db: Session = Depends(get_db)):
+    items = db.query(Service).order_by(Service.id.desc()).all()
+    return items
+
+
+@router.get("/services/{id}", response_model=ServiceRead)
+def get_service(id: int, db: Session = Depends(get_db)):
+    obj = db.query(Service).filter(Service.id == id).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return obj
+
 @router.post("/services", response_model=ServiceRead, status_code=status.HTTP_201_CREATED)
 def create_service(payload: ServiceCreate, db: Session = Depends(get_db)):
     if db.query(Service).filter(Service.slug == payload.slug).first():
@@ -53,6 +67,16 @@ def update_service(id: int, payload: ServiceUpdate, db: Session = Depends(get_db
 @router.delete("/services/{id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_service(id: int, db: Session = Depends(get_db)):
     obj = db.query(Service).filter(Service.id == id).first()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Service not found")
+    db.delete(obj)
+    db.commit()
+    return None
+
+
+@router.delete("/services/by-slug/{slug}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_service_by_slug(slug: str, db: Session = Depends(get_db)):
+    obj = db.query(Service).filter(Service.slug == slug).first()
     if not obj:
         raise HTTPException(status_code=404, detail="Service not found")
     db.delete(obj)

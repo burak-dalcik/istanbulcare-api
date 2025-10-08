@@ -12,6 +12,12 @@ class UserCreate(BaseModel):
     password: str
 
 
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    is_admin: Optional[bool] = None
+
+
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str

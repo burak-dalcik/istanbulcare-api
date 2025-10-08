@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status, UploadFile, File
+from fastapi import APIRouter, Depends, Query, status, UploadFile, File
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import os
@@ -6,9 +6,9 @@ import uuid
 from pathlib import Path
 
 from app.db.session import get_db
-from app.models.service import Service
-from app.models.blog import BlogPost
-from app.models.lead import Lead
+from app.services.blog_service import BlogService
+from app.services.user_service import ServiceService, LeadService
+from app.dependencies.services import get_blog_service, get_service_service, get_lead_service
 from app.models.header import HeaderColumn, ComboboxItem
 from app.schemas.service import ServiceListItem, ServiceRead
 from app.schemas.blog import PaginatedBlogPosts, BlogPostRead, BlogPostCreate
@@ -19,17 +19,15 @@ router = APIRouter(prefix="/api/v1", tags=["public"])
 
 
 @router.get("/services", response_model=list[ServiceListItem])
-def list_services(db: Session = Depends(get_db)):
-    services = db.query(Service).filter(Service.is_active == True).order_by(Service.id.desc()).all()
-    return services
+def list_services(service_service: ServiceService = Depends(get_service_service)):
+    """Get all active services"""
+    return service_service.get_active_services()
 
 
 @router.get("/services/{slug}", response_model=ServiceRead)
-def get_service(slug: str, db: Session = Depends(get_db)):
-    service = db.query(Service).filter(Service.slug == slug, Service.is_active == True).first()
-    if not service:
-        raise HTTPException(status_code=404, detail="Service not found")
-    return service
+def get_service(slug: str, service_service: ServiceService = Depends(get_service_service)):
+    """Get service by slug"""
+    return service_service.get_service_by_slug(slug)
 
 
 @router.get("/blog/posts", response_model=PaginatedBlogPosts)
@@ -37,50 +35,44 @@ def list_blog_posts(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
     lang: str = Query("en", description="Language code (tr, en, fr)"),
-    db: Session = Depends(get_db),
+    blog_service: BlogService = Depends(get_blog_service),
 ):
     """Get paginated blog posts with language support"""
-    query = db.query(BlogPost).order_by(BlogPost.published_date.desc().nullslast(), BlogPost.id.desc())
-    total = query.count()
-    items = query.offset((page - 1) * size).limit(size).all()
-    return PaginatedBlogPosts(items=items, total=total, page=page, size=size)
+    result = blog_service.get_published_posts(page=page, size=size)
+    return PaginatedBlogPosts(
+        items=result["items"], 
+        total=result["total"], 
+        page=result["page"], 
+        size=result["size"]
+    )
 
 
 @router.get("/blog/posts/{slug}", response_model=BlogPostRead)
 def get_blog_post(
     slug: str, 
     lang: str = Query("en", description="Language code (tr, en, fr)"),
-    db: Session = Depends(get_db)
+    blog_service: BlogService = Depends(get_blog_service)
 ):
     """Get single blog post by slug with language support"""
-    post = db.query(BlogPost).filter(BlogPost.slug == slug).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Blog post not found")
-    return post
+    return blog_service.get_post_by_slug(slug)
 
 
 @router.post("/blog/posts", response_model=BlogPostRead, status_code=status.HTTP_201_CREATED)
-def create_blog_post(payload: BlogPostCreate, db: Session = Depends(get_db)):
+def create_blog_post(
+    payload: BlogPostCreate, 
+    blog_service: BlogService = Depends(get_blog_service)
+):
     """Create a new blog post"""
-    # Check if slug already exists
-    if db.query(BlogPost).filter(BlogPost.slug == payload.slug).first():
-        raise HTTPException(status_code=400, detail="Post slug already exists")
-    
-    # Create new blog post
-    blog_post = BlogPost(**payload.model_dump())
-    db.add(blog_post)
-    db.commit()
-    db.refresh(blog_post)
-    return blog_post
+    return blog_service.create_post(payload)
 
 
 @router.post("/leads", response_model=LeadRead, status_code=status.HTTP_201_CREATED)
-def create_lead(payload: LeadCreate, db: Session = Depends(get_db)):
-    lead = Lead(**payload.model_dump())
-    db.add(lead)
-    db.commit()
-    db.refresh(lead)
-    return lead
+def create_lead(
+    payload: LeadCreate, 
+    lead_service: LeadService = Depends(get_lead_service)
+):
+    """Create a new lead"""
+    return lead_service.create_lead(payload)
 
 
 # Header Columns (Public - No Authentication Required)
